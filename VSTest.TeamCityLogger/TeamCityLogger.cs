@@ -16,6 +16,7 @@ namespace VSTest.TeamCityLogger
         private ITeamCityWriter _teamCityWriter;
         private ITeamCityTestsSubWriter _vsTestSuite;
         private ITeamCityTestsSubWriter _currentAssemblySuite;
+        private bool _opened;
 
         public TeamCityLogger()
         {
@@ -33,9 +34,7 @@ namespace VSTest.TeamCityLogger
             events.TestRunMessage += TestMessageHandler;
             events.TestResult += TestResultHandler;
             events.TestRunComplete += TestRunCompleteHandler;
-
             _teamCityWriter = new TeamCityServiceMessages().CreateWriter(w => Trace.WriteLine(w));
-            _vsTestSuite = _teamCityWriter.OpenTestSuite("VSTest");
         }
 
         /// <summary>
@@ -43,6 +42,7 @@ namespace VSTest.TeamCityLogger
         /// </summary>
         private void TestMessageHandler(object sender, TestRunMessageEventArgs e)
         {
+            EnsureOpened();
             try
             {
                 switch (e.Level)
@@ -69,6 +69,7 @@ namespace VSTest.TeamCityLogger
         /// </summary>
         private void TestResultHandler(object sender, TestResultEventArgs e)
         {
+            EnsureOpened();
             try
             {
                 var currentAssembly = Path.GetFileName(e.Result.TestCase.Source);
@@ -105,15 +106,30 @@ namespace VSTest.TeamCityLogger
         /// </summary>
         private void TestRunCompleteHandler(object sender, TestRunCompleteEventArgs e)
         {
-            if (_currentAssemblySuite != null) _currentAssemblySuite.Dispose();
+            if (_currentAssemblySuite != null)
+            {
+                _currentAssemblySuite.Dispose();
+            }
             _vsTestSuite.Dispose();
-
             _teamCityWriter.Dispose();
 
             Trace.WriteLine(string.Format("Total Executed: {0}", e.TestRunStatistics.ExecutedTests));
             Trace.WriteLine(string.Format("Total Passed: {0}", e.TestRunStatistics[TestOutcome.Passed]));
             Trace.WriteLine(string.Format("Total Failed: {0}", e.TestRunStatistics[TestOutcome.Failed]));
             Trace.WriteLine(string.Format("Total Skipped: {0}", e.TestRunStatistics[TestOutcome.Skipped]));
+        }
+
+        /// <summary>
+        /// We should not initialize (and open) wrapping test suite until tests have actually started executing.
+        /// If there is an error in vstest configuration (for example, runsettings file does not exist),
+        /// test logger becomes initialized, but exits without closing root messages flow. This causes build log tree
+        /// to break
+        /// </summary>
+        private void EnsureOpened()
+        {
+            if (_opened) return;
+            _vsTestSuite = _teamCityWriter.OpenTestSuite("VSTest");
+            _opened = true;
         }
     }
 }
