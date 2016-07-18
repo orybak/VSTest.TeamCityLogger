@@ -92,6 +92,17 @@ namespace VSTest.TeamCityLogger
                     {
                         currentTest.WriteFailed(e.Result.ErrorMessage, e.Result.ErrorStackTrace);
                     }
+
+                    foreach (var message in e.Result.Messages)
+                    {
+                        if (!"StdOutMsgs".Equals(message.Category, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        currentTest.WriteStdOutput(message.Text);
+                    }
+                                        
                     currentTest.WriteDuration(e.Result.Duration);
                 }
             }
